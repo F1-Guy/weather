@@ -5,12 +5,6 @@ from requests import ConnectionError
 
 # TODO:
 # See what kind of error checking and handling to use
-# Remove constans and make them be configurable
-
-LOCATION_NAME = 'Eindhoven'
-UNITS = 'metric'
-COUNT = 8
-API_KEY = 'f05ef9a17b18d9558976be06364d9c45'
 
 
 class DataPoint:
@@ -71,25 +65,35 @@ class Forecast:
 
 class WeatherAPI:
     """
-    Contains all the data needed for the forecast module
-    and methods for retrieving and updating that data.
-
-    Args:
-        location_name (str): Name of the location to get weather for
+    Contains all the data weather data and methods
+    for retrieving and updating that data.
     """
     current: DataPoint
     forecast: Forecast
 
-    def __init__(self, location_name: str) -> None:
-        """Initializes the weather API object with the current weather and forecast data."""
+    def __init__(self, location_name: str, api_key: str, units: str = 'metric', count: int = 8) -> None:
+        """Initializes the weather API object with the current weather and forecast data.
+        Units are metric by default and the forcast returrns 8 time steps (24 hours).
+
+        Args:
+            location_name (str): Name of the location to get weather for
+
+        Errors:
+            ValueError: If the response from the API is not valid
+            ConnectionError: If the API is not reachable
+        """
         self.location_name = location_name
+        self.api_key = api_key
+        self.units = units
+        self.count = count
         self.update()
 
     def update(self) -> None:
         """Updates the current weather and forecast data."""
-        self.get_weather(self.location_name)
+        self.get_weather(self.location_name, self.api_key,
+                         self.units, self.count)
 
-    def get_weather(self, location_name: str) -> None:
+    def get_weather(self, location_name: str, api_key: str, units: str, count) -> None:
         """
         Makes a GET request to the OpenWeatherMap API and retrieves the current weather and forecast form different endpoints.
 
@@ -104,30 +108,20 @@ class WeatherAPI:
         """
         try:
             current = requests.get(
-                f'https://api.openweathermap.org/data/2.5/weather?q={location_name}&appid={API_KEY}&units={UNITS}', timeout=5)
+                f'https://api.openweathermap.org/data/2.5/weather?q={location_name}&appid={api_key}&units={units}', timeout=5)
             forecast = requests.get(
-                f'https://api.openweathermap.org/data/2.5/forecast?q={location_name}&appid={API_KEY}&units={UNITS}&cnt={COUNT}', timeout=5)
+                f'https://api.openweathermap.org/data/2.5/forecast?q={location_name}&appid={api_key}&units={units}&cnt={count}', timeout=5)
         except ConnectionError as ex:
-            print(ex)
+            raise
 
         current_json = current.json()
         forecast_json = forecast.json()
 
         if not current_json or not forecast_json or current_json['cod'] != 200 or forecast_json['cod'] != '200':
-            raise ValueError('Invalid response from the API')
+            raise ValueError(
+                f"""One or more of the jason responses is not valid. They are not with response code 200.
+Current response code: {current_json.get('cod', 'json is empty')}
+Forecast response code: {forecast_json.get('cod', 'json is empty')}""")
 
         self.current = DataPoint(current_json)
         self.forecast = Forecast(forecast_json)
-
-
-if __name__ == "__main__":
-    weather = WeatherAPI(LOCATION_NAME)
-
-    print('Current temp:')
-    print(f'{weather.current.dt}: {weather.current.temp}')
-
-    print()
-
-    print('Forecast temps:')
-    for time_step in weather.forecast.data:
-        print(f'{time_step.dt}: {time_step.temp}')
